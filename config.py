@@ -1,5 +1,6 @@
 import argparse
 import os
+import torch
 
 def get_args():
     parser = argparse.ArgumentParser(description='AdaFace Inference')
