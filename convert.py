@@ -18,7 +18,7 @@ except Exception as e:
     raise RuntimeError("Could not import face_alignment.mtcnn from the repo.") from e
 
 # Instantiate MTCNN (uses npy weights from face_alignment/mtcnn_pytorch/src/weights)
-mtcnn_model = repo_mtcnn.MTCNN(device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'), crop_size=(112, 112))
+mtcnn_model = repo_mtcnn.MTCNN(device='cuda:0' if torch.cuda.is_available() else 'cpu', crop_size=(112, 112)) # change later for device sync
 
 def get_aligned_face_repo(image_path=None, rgb_pil_image=None, limit=1):
     """
