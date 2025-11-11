@@ -1,97 +1,84 @@
-from pathlib import Path
-import argparse
-import mxnet as mx
-from tqdm import tqdm
-from PIL import Image
-import bcolz
-import pickle
-import cv2
-import numpy as np
-from torchvision import transforms as trans
 import os
-import numbers
+import sys
+from pathlib import Path
+import torch
+import numpy as np
+from PIL import Image
+import cv2
+from torchvision import transforms as trans
 
-def save_rec_to_img_dir(rec_path, swap_color_channel=False, save_as_png=False):
+# Add repo to sys.path if needed (assuming running from repo root)
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if REPO not in sys.path:
+    sys.path.insert(0, REPO)
 
-    save_path = rec_path/'imgs'
-    if not save_path.exists():
-        save_path.mkdir()
-    imgrec = mx.recordio.MXIndexedRecordIO(str(rec_path/'train.idx'), str(rec_path/'train.rec'), 'r')
-    img_info = imgrec.read_idx(0)
-    header,_ = mx.recordio.unpack(img_info)
-    max_idx = int(header.label[0])
-    for idx in tqdm(range(1,max_idx)):
-        img_info = imgrec.read_idx(idx)
-        header, img = mx.recordio.unpack_img(img_info)
-        if not isinstance(header.label, numbers.Number):
-            label = int(header.label[0])
-        else:
-            label = int(header.label)
+try:
+    from face_alignment import mtcnn as repo_mtcnn
+except Exception as e:
+    raise RuntimeError("Could not import face_alignment.mtcnn from the repo.") from e
 
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        if swap_color_channel:
-            # this option saves the image in the right color.
-            # but the training code uses PIL (RGB)
-            # and validation code uses Cv2 (BGR)
-            # so we want to turn this off to deliberately swap the color channel order.
-            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+# Instantiate MTCNN (uses npy weights from face_alignment/mtcnn_pytorch/src/weights)
+mtcnn_model = repo_mtcnn.MTCNN(device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'), crop_size=(112, 112))
 
-        img = Image.fromarray(img)
-        label_path = save_path/str(label)
-        if not label_path.exists():
-            label_path.mkdir()
+def get_aligned_face_repo(image_path=None, rgb_pil_image=None, limit=1):
+    """
+    Use the repo MTCNN to return a PIL.Image (RGB, 112x112) of the aligned face or None.
+    """
+    if rgb_pil_image is None and image_path is None:
+        raise ValueError("Provide image_path or rgb_pil_image.")
+    if rgb_pil_image is None:
+        img = Image.open(image_path).convert('RGB')
+    else:
+        if not isinstance(rgb_pil_image, Image.Image):
+            raise TypeError("rgb_pil_image must be a PIL.Image")
+        img = rgb_pil_image.convert('RGB')
+    try:
+        bboxes, faces = mtcnn_model.align_multi(img, limit=1)
+        if faces and len(faces) > 0:
+            return faces[0]
+        return None
+    except Exception as e:
+        print("[get_aligned_face_repo] detection/alignment failed:", e)
+        return None
 
-        if save_as_png:
-            img_save_path = label_path/'{}.png'.format(idx)
-            img.save(img_save_path)
-        else:
-            img_save_path = label_path/'{}.jpg'.format(idx)
-            img.save(img_save_path, quality=95)
+def preprocess_bgr_112_from_aligned(aligned_pil, swap_color_channel=False, normalize=True, device='cpu'):
+    """
+    Convert aligned PIL RGB 112x112 -> torch tensor (1,3,112,112) in BGR order,
+    normalized with (x-0.5)/0.5 if normalize=True.
+    """
+    if aligned_pil is None:
+        return None
+    arr = np.array(aligned_pil.convert('RGB')).astype(np.float32) / 255.0  # HWC RGB [0,1]
+    if swap_color_channel:
+        arr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+    else:
+        arr = arr[:, :, ::-1]  # RGB to BGR
+    if normalize:
+        arr = (arr - 0.5) / 0.5
+    arr = np.transpose(arr, (2, 0, 1)).copy()  # CHW
+    tensor = torch.from_numpy(arr).unsqueeze(0).to(device).float()  # (1,3,H,W)
+    return tensor
 
-def load_bin(path, rootdir, image_size=[112,112]):
+def load_and_preprocess_image(image_path, swap_color_channel=False, device='cpu'):
+    """
+    Load image, align face using MTCNN, preprocess to normalized tensor (BGR order for AdaFace).
+    Returns: torch.Tensor (1, 3, 112, 112) or None if alignment fails.
+    """
+    aligned_pil = get_aligned_face_repo(image_path=image_path)
+    return preprocess_bgr_112_from_aligned(aligned_pil, swap_color_channel, normalize=True, device=device)
 
-    test_transform = trans.Compose([
-                trans.ToTensor(),
-                trans.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-            ])
-    if not rootdir.exists():
-        rootdir.mkdir()
-    bins, issame_list = pickle.load(open(path, 'rb'), encoding='bytes')
-    data = bcolz.fill([len(bins), 3, image_size[0], image_size[1]], dtype=np.float32, rootdir=rootdir, mode='w')
-    for i in range(len(bins)):
-        _bin = bins[i]
-        img = mx.image.imdecode(_bin).asnumpy()
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        img = Image.fromarray(img.astype(np.uint8))
-        data[i, ...] = test_transform(img)
-        i += 1
-        if i % 1000 == 0:
-            print('loading bin', i)
-    print(data.shape)
-    np.save(str(rootdir)+'_list', np.array(issame_list))
-    return data, issame_list
-
-
-if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser(description='for face verification')
-    parser.add_argument("-r", "--rec_path", help="mxnet record file path", default='./faces_emore', type=str)
-    parser.add_argument("--make_image_files", action='store_true')
-    parser.add_argument("--make_validation_memfiles", action='store_true')
-    parser.add_argument("--swap_color_channel", action='store_true')
-
-    args = parser.parse_args()
-    rec_path = Path(args.rec_path)
-    if args.make_image_files:
-        # unfolds train.rec to image folders
-        save_rec_to_img_dir(rec_path, swap_color_channel=args.swap_color_channel)
-
-    if args.make_validation_memfiles:
-        # for saving memory usage during training
-        # bin_files = ['agedb_30', 'cfp_fp', 'lfw', 'calfw', 'cfp_ff', 'cplfw', 'vgg2_fp']
-        bin_files = list(filter(lambda x: os.path.splitext(x)[1] in ['.bin'], os.listdir(args.rec_path)))
-        bin_files = [i.split('.')[0] for i in bin_files]
-
-        for i in range(len(bin_files)):
-            load_bin(rec_path/(bin_files[i]+'.bin'), rec_path/bin_files[i])
-
+def batch_preprocess_images(image_paths, swap_color_channel=False, device='cpu'):
+    """
+    Preprocess a list of images into a batched tensor.
+    Skips failed images, returns tensor and list of successful paths.
+    """
+    tensors = []
+    successful_paths = []
+    for path in image_paths:
+        t = load_and_preprocess_image(path, swap_color_channel, device)
+        if t is not None:
+            tensors.append(t)
+            successful_paths.append(path)
+    if not tensors:
+        return None, []
+    return torch.cat(tensors, dim=0), successful_paths

@@ -1,7 +1,7 @@
 numpy==1.26.4
 pandas==2.2.2
 opencv-python==4.8.1.78
-torch            
+torch
 torchvision
 tqdm
 Pillow
