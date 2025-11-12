@@ -22,7 +22,7 @@ def main():
     if not os.path.exists(ckpt_path):
         raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
     
-    raw_sd = torch.load(ckpt_path, map_location='cpu')
+    raw_sd = torch.load(ckpt_path, map_location='cpu', weights_only=False)
     if isinstance(raw_sd, dict) and 'state_dict' in raw_sd:
         raw_sd = raw_sd['state_dict']
     normalized_sd = {k.replace('module.', '').replace('model.', ''): v for k, v in raw_sd.items()}
