@@ -13,9 +13,27 @@ def get_args():
     parser.add_argument('--swap_color_channel', action='store_true', help='Swap color channels during preprocessing')
     parser.add_argument('--num_workers', default=4, type=int, help='Number of workers for data loading')
     
+    # New args for video pipeline
+    parser.add_argument('--video_path', type=str, default=None, help='Path to input video file (if provided, runs video inference)')
+    parser.add_argument('--db_path', type=str, default='./employee_db.json', help='Path to employee database JSON (for matching)')
+    parser.add_argument('--output_video_path', type=str, default='./output_video.mp4', help='Path to save annotated output video')
+    parser.add_argument('--employees_dir', type=str, default=None, help='Directory for building employee DB (e.g., employees/<name>/images)')
+    parser.add_argument('--build_db', action='store_true', help='Flag to build employee DB from --employees_dir')
+
+    # Hyperparams for video (tunable via args)
+    parser.add_argument('--conf_threshold', default=0.5, type=float, help='YOLO confidence threshold')
+    parser.add_argument('--iou_threshold', default=0.45, type=float, help='YOLO IoU threshold')
+    parser.add_argument('--upper_crop_ratio', default=0.4, type=float, help='Fraction of person bbox for head crop')
+    parser.add_argument('--padding_ratio', default=0.2, type=float, help='Padding around crop')
+    parser.add_argument('--skip_interval', default=5, type=int, help='Re-attempt embedding every N frames')
+    parser.add_argument('--cos_threshold', default=0.6, type=float, help='Cosine similarity threshold for DB match')
+    parser.add_argument('--min_embs_for_match', default=1, type=int, help='Min embeddings needed for matching')
+    parser.add_argument('--min_crop_size', default=100, type=int, help='Min crop size in pixels')
+    parser.add_argument('--max_embs_per_track', default=10, type=int, help='Max embeddings to average per track')
+    parser.add_argument('--reid_threshold', default=0.8, type=float, help='Cosine similarity threshold for track re-identification')
+    
     args = parser.parse_args()
     
-    # Ensure output dir exists
     os.makedirs(args.output_dir, exist_ok=True)
     
     return args

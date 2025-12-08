@@ -120,10 +120,30 @@ pip install -r requirements.txt
 gdown --id 1hRI8YhlfTx2YMzyDwsqLTOxbyFVOqpSI -O ./checkpoints/adaface_ir101_ms1mv3.pth
 
 ### **Chạy thử**
-'''bash 
+
+### 1. Inference trên hình ảnh tĩnh
+
 python main.py --arch ir_101 \
     --checkpoint_path ./checkpoints/adaface_ir101_ms1mv3.pth \
-    --input_dir my_image_path \                                       # path
-    --output_dir ./results/ \
-    --batch_size 32                                                   # adjust 
+    --input_dir ./input_images \  # Thư mục chứa hình ảnh đầu vào
+    --output_dir ./results/ \     # Thư mục lưu embedding (.npy)
+    --batch_size 32               # Điều chỉnh theo nhu cầu
+
+### 2. Xây dựng json DB
+
+python main.py --build_db \
+    --employees_dir ./employees \  # Thư mục chứa subdirs nhân viên (e.g., employees/ Tên nhân viên /images/*.jpg)
+    --db_path ./employee_db.json \ # File JSON output
+    --checkpoint_path ./checkpoints/adaface_ir101_ms1mv3.pth
+
+### 3. Xử lý Video
+
+python main.py --video_path ./input_video.mp4 \  # Đường dẫn video đầu vào
+    --db_path ./employee_db.json \               # File DB đã xây dựng
+    --output_video_path ./output_video.mp4 \     # Video output với annotation
+    --checkpoint_path ./checkpoints/adaface_ir101_ms1mv3.pth \
+    --conf_threshold 0.6 \                       # Ngưỡng YOLO confidence
+    --cos_threshold 0.6 \                        # Ngưỡng cosine cho matching DB
+    --reid_threshold 0.8 \                       # Ngưỡng cosine cho re-ID
+    --skip_interval 5                            # Khoảng cách frame thử embedding
 

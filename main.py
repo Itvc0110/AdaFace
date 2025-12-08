@@ -7,6 +7,8 @@ import config
 from net import build_model
 from convert import batch_preprocess_images
 from data import get_inference_dataloader
+from db_builder import build_employee_db
+from video_processor import process_video
 
 def main():
     args = config.get_args()
@@ -31,33 +33,37 @@ def main():
     model.load_state_dict(filtered_sd, strict=False)
     print(f"Loaded model {args.arch} from {ckpt_path} on {device}")
     
-    # Get dataloader 
-    dataloader = get_inference_dataloader(args.input_dir, args.batch_size, args.num_workers)
-    print(f"Found {len(dataloader.dataset)} images in {args.input_dir}")
-    
-    # Inference loop
-    start_time = time.time()
-    all_embeddings = []
-    all_paths = []
-    for batch_paths in dataloader:
-        inputs, successful_paths = batch_preprocess_images(batch_paths, args.swap_color_channel, device)
-        if inputs is None:
-            continue
-        with torch.no_grad():
-            outputs = model(inputs)
-            feats = outputs[0] if isinstance(outputs, tuple) else outputs
-            embeddings = F.normalize(feats, dim=1).cpu().numpy()
-        all_embeddings.extend(embeddings)
-        all_paths.extend(successful_paths)
-    
-    elapsed = time.time() - start_time
-    print(f"Inference completed. Time taken: {elapsed:.2f} seconds for {len(all_paths)} images")
-    
-    # Save embeddings
-    for emb, path in zip(all_embeddings, all_paths):
-        filename = os.path.splitext(os.path.basename(path))[0] + '.npy'
-        np.save(os.path.join(args.output_dir, filename), emb)
-    print(f"Saved {len(all_paths)} embeddings to {args.output_dir}")
+    if args.build_db:
+        build_employee_db(args, model, device)
+    elif args.video_path:
+        process_video(args, model, device)
+    else:
+        # Original image inference
+        dataloader = get_inference_dataloader(args.input_dir, args.batch_size, args.num_workers)
+        print(f"Found {len(dataloader.dataset)} images in {args.input_dir}")
+        
+        start_time = time.time()
+        all_embeddings = []
+        all_paths = []
+        for batch_paths in dataloader:
+            inputs, successful_paths = batch_preprocess_images(batch_paths, args.swap_color_channel, device)
+            if inputs is None:
+                continue
+            with torch.no_grad():
+                outputs = model(inputs)
+                feats = outputs[0] if isinstance(outputs, tuple) else outputs
+                embeddings = F.normalize(feats, dim=1).cpu().numpy()
+            all_embeddings.extend(embeddings)
+            all_paths.extend(successful_paths)
+        
+        elapsed = time.time() - start_time
+        print(f"Inference completed. Time taken: {elapsed:.2f} seconds for {len(all_paths)} images")
+        
+        # Save embeddings
+        for emb, path in zip(all_embeddings, all_paths):
+            filename = os.path.splitext(os.path.basename(path))[0] + '.npy'
+            np.save(os.path.join(args.output_dir, filename), emb)
+        print(f"Saved {len(all_paths)} embeddings to {args.output_dir}")
 
 if __name__ == '__main__':
     main()

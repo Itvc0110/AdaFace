@@ -7,7 +7,6 @@ from PIL import Image
 import cv2
 from torchvision import transforms as trans
 
-# Add repo to sys.path if needed (assuming running from repo root)
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO not in sys.path:
     sys.path.insert(0, REPO)
@@ -17,7 +16,7 @@ try:
 except Exception as e:
     raise RuntimeError("Could not import face_alignment.mtcnn from the repo.") from e
 
-# Instantiate MTCNN (uses npy weights from face_alignment/mtcnn_pytorch/src/weights)
+# Instantiate MTCNN 
 mtcnn_model = repo_mtcnn.MTCNN(device='cuda:0' if torch.cuda.is_available() else 'cpu', crop_size=(112, 112)) # change later for device sync
 
 def get_aligned_face_repo(image_path=None, rgb_pil_image=None, limit=1):
