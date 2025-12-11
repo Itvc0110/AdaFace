@@ -31,6 +31,11 @@ def get_args():
     parser.add_argument('--min_crop_size', default=100, type=int, help='Min crop size in pixels')
     parser.add_argument('--max_embs_per_track', default=10, type=int, help='Max embeddings to average per track')
     parser.add_argument('--reid_threshold', default=0.8, type=float, help='Cosine similarity threshold for track re-identification')
+
+    # Args for logging and debugging
+    parser.add_argument('--verbose', action='store_true', help='Print detailed logs including bboxes every frame')
+    parser.add_argument('--log_level', default='INFO', type=str, choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], help='Logging level')
+    parser.add_argument('--max_missed_frames', default=3, type=int, help='Max frames to predict bbox before hiding')
     
     args = parser.parse_args()
     
